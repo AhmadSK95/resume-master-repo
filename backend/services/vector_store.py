@@ -5,7 +5,7 @@ import hashlib
 
 MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 # MODEL = "sentence-transformers/all-mpnet-base-v2"
-
+# Model
 class ResumeIndex:
     def __init__(self, persist_dir="../data/chroma"):
         self.client = chromadb.Client(Settings(persist_directory=persist_dir, anonymized_telemetry=False))
