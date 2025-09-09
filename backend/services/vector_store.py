@@ -4,6 +4,7 @@ from sentence_transformers import SentenceTransformer
 import hashlib
 
 MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+# MODEL = "sentence-transformers/all-mpnet-base-v2"
 
 class ResumeIndex:
     def __init__(self, persist_dir="../data/chroma"):
