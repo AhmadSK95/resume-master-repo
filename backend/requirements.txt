@@ -1,0 +1,7 @@
+flask
+chromadb
+sentence-transformers
+rapidfuzz
+scikit-learn
+pypdf
+python-docx

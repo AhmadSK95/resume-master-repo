@@ -1,0 +1,27 @@
+# Repository Collaborators Configuration
+# This file documents the intended collaborators and their access levels for this repository
+# 
+# To apply these settings, repository owners should manually add collaborators through:
+# - GitHub web interface: Repository Settings > Manage access > Invite a collaborator
+# - GitHub CLI: gh api repos/:owner/:repo/collaborators/:username -X PUT -f permission=admin
+# - GitHub API: PUT /repos/:owner/:repo/collaborators/:username
+
+collaborators:
+  # Repository owner
+  AhmadSK95:
+    role: admin
+    reason: "Repository owner"
+    
+  # Additional collaborators
+  seesuro:
+    role: admin  
+    reason: "Requested same access as owner (AhmadSK95)"
+    requested_by: AhmadSK95
+    requested_date: "2025-09-09"
+
+# Available roles:
+# - admin: Full access to repository, including ability to delete
+# - maintain: Recommended for project managers who need to manage the repository without access to sensitive or destructive actions
+# - push: Recommended for contributors who regularly push to your project  
+# - triage: Recommended for contributors who need to proactively manage issues and pull requests without write access
+# - pull: Recommended for non-code contributors who want to view or discuss your project
