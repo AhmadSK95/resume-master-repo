@@ -1,1 +1,21 @@
 .venv/
+
+# Environment files
+.env
+.env.*
+*.env
+backend/.env
+frontend/.env*
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+app.log
+
+# Data directories
+data/
+
+# Node modules
+node_modules/
