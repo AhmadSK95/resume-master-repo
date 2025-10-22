@@ -23,6 +23,6 @@ class ResumeIndex:
         self.col.upsert(ids=[rid], documents=[text], metadatas=[metadata], embeddings=self._embed([text]))
         return rid
 
-    def query_similar(self, jd_text:str, top_k:int=30, where:dict|None=None):
+    def query_similar(self, jd_text: str, top_k: int = 30, where=None):
         q = self._embed([jd_text])[0]
         return self.col.query(query_embeddings=[q], n_results=top_k, where=where)
