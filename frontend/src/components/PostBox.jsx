@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
-import { analyzeResume, findReferences, renderPdf, checkHealth } from '../api';
+import { analyzeResume, improveResumeWithJD, findReferences, renderPdf, checkHealth } from '../api';
+import ReferenceResumeCard from './ReferenceResumeCard';
+import ResumeViewer from './ResumeViewer';
 
 export default function PostBox() {
   const [mode, setMode] = useState('improve'); // 'improve' or 'references'
 
   // Improve mode state
   const [file, setFile] = useState(null);
+  const [jdText, setJdText] = useState("");
   const [analysisData, setAnalysisData] = useState(null);
   const [userResumeText, setUserResumeText] = useState("");
 
@@ -27,7 +30,14 @@ export default function PostBox() {
     if (!file) return;
     setLoading(true); setError("");
     try {
-      const data = await analyzeResume(file);
+      let data;
+      if (jdText.trim()) {
+        // Use JD-enhanced analysis
+        data = await improveResumeWithJD(file, jdText);
+      } else {
+        // Use basic analysis
+        data = await analyzeResume(file);
+      }
       setAnalysisData(data);
       setUserResumeText(data.resume_text_full || '');
       setFile(null);
@@ -117,6 +127,15 @@ export default function PostBox() {
             style={{marginBottom: 12, padding: 8}}
           />
           
+          <label style={{display: 'block', marginTop: 16, marginBottom: 8, fontWeight: 600}}>Job Description (Optional - for tailored suggestions):</label>
+          <textarea 
+            value={jdText} 
+            onChange={e => setJdText(e.target.value)}
+            rows={6}
+            placeholder="Paste the job description here to get targeted improvement suggestions and see matching reference resumes..."
+            style={{width: '100%', padding: 12, fontSize: 14, borderRadius: 6, border: '1px solid #ddd', fontFamily: 'system-ui'}}
+          />
+          
           <div style={{marginTop: 12, display: 'flex', alignItems: 'center', gap: 16}}>
             <button 
               onClick={onAnalyzeResume}
@@ -132,11 +151,11 @@ export default function PostBox() {
                 fontWeight: 600
               }}
             >
-              {loading ? '⏳ Analyzing...' : '🔍 Analyze Resume'}
+              {loading ? '⏳ Analyzing...' : (jdText.trim() ? '🎯 Analyze for Job' : '🔍 Analyze Resume')}
             </button>
 
             <button 
-              onClick={() => { setAnalysisData(null); setUserResumeText(''); setError(''); }}
+              onClick={() => { setAnalysisData(null); setUserResumeText(''); setJdText(''); setError(''); }}
               style={{
                 padding: '10px 24px',
                 background: '#6c757d',
@@ -156,24 +175,49 @@ export default function PostBox() {
           {analysisData && (
             <div style={{marginTop: 24}}>
               <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12}}>
-                <span style={{background: '#17a2b8', color: 'white', padding: '6px 12px', borderRadius: 20, fontWeight: 700}}>Score: {analysisData.score}</span>
-                <span style={{color: '#666'}}>File: {analysisData.filename}</span>
+                <span style={{background: analysisData.score >= 70 ? '#28a745' : analysisData.score >= 50 ? '#ffc107' : '#dc3545', color: 'white', padding: '8px 16px', borderRadius: 20, fontWeight: 700, fontSize: 16}}>
+                  {analysisData.jd_text ? 'Match Score' : 'Score'}: {analysisData.score}/100
+                </span>
+                <span style={{color: '#666', fontSize: 14}}>File: {analysisData.filename}</span>
               </div>
+              
               <div style={{background: '#f0f9ff', padding: 20, borderRadius: 8, marginBottom: 16, border: '2px solid #007bff'}}>
-                <h3 style={{marginTop: 0, color: '#007bff'}}>AI Feedback</h3>
+                <h3 style={{marginTop: 0, color: '#007bff'}}>
+                  {analysisData.jd_text ? '🎯 Job-Specific Insights' : '✨ AI Feedback'}
+                </h3>
                 <div style={{whiteSpace: 'pre-wrap', lineHeight: 1.6}}>{analysisData.analysis}</div>
               </div>
 
               {analysisData.fields && (
-                <div style={{border: '1px solid #eee', padding: 12, borderRadius: 8, background: '#fff'}}>
-                  <strong>Detected fields:</strong>
+                <div style={{border: '1px solid #eee', padding: 12, borderRadius: 8, background: '#fff', marginBottom: 16}}>
+                  <strong>Detected Fields:</strong>
                   <div style={{fontSize: 14, marginTop: 6}}>
-                    <div><strong>Skills:</strong> {(analysisData.fields.skills || []).join(', ')}</div>
-                    <div><strong>Titles:</strong> {(analysisData.fields.titles || []).join(', ')}</div>
+                    <div><strong>Skills:</strong> {(analysisData.fields.skills || []).join(', ') || 'None detected'}</div>
+                    <div><strong>Titles:</strong> {(analysisData.fields.titles || []).join(', ') || 'None detected'}</div>
                     <div><strong>Years:</strong> {analysisData.fields.years_exp || 0}</div>
                   </div>
                 </div>
               )}
+
+              {analysisData.reference_resumes && analysisData.reference_resumes.length > 0 && (
+                <div style={{marginTop: 24}}>
+                  <h3 style={{color: '#333'}}>📚 Top Reference Resumes for This Job</h3>
+                  <p style={{color: '#666', fontSize: 14, marginBottom: 16}}>These resumes from our database match the job description well. Use them as inspiration for improvements.</p>
+                  {analysisData.reference_resumes.map((ref, idx) => (
+                    <ReferenceResumeCard
+                      key={idx}
+                      reference={ref}
+                      index={idx}
+                      onDownloadPdf={onDownloadPdf}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <ResumeViewer
+                resumeText={analysisData.resume_text_full}
+                filepath={analysisData.filepath}
+              />
             </div>
           )}
         </div>

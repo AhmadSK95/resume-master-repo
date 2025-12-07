@@ -11,7 +11,7 @@ from services.extract_fields import extract_fields, infer_jd_skills, infer_jd_ti
 from services.vector_store import ResumeIndex
 from services.scorer import score_and_rank
 from services.openai_service import extract_fields_with_openai, analyze_with_prompt, enhance_candidate_summary
-from services.resume_analyzer import analyze_and_suggest_improvements, compare_with_references
+from services.resume_analyzer import analyze_and_suggest_improvements, compare_with_references, analyze_resume_for_job
 
 load_dotenv()
 
@@ -120,6 +120,86 @@ def analyze_user_resume():
                 "analysis": analysis["analysis"],
                 "fields": fields,
                 "message": "Resume analyzed successfully",
+                "api_usage": analysis.get("api_usage")
+            })
+        except Exception as e:
+            return jsonify({"error": f"Failed to analyze resume: {str(e)}"}), 500
+    
+    return jsonify({"error": "Invalid file type. Allowed: pdf, docx, txt"}), 400
+
+
+@app.post("/api/improve-with-jd")
+def improve_resume_with_jd():
+    """Analyze user's resume against a job description with reference resume insights."""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    
+    file = request.files['file']
+    jd_text = request.form.get('jd_text', '').strip()
+    
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+    
+    if not jd_text:
+        return jsonify({"error": "Job description is required"}), 400
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        
+        try:
+            # Extract resume text
+            resume_text = load_and_clean(filepath)
+            
+            # Extract fields
+            fields = extract_fields(resume_text, use_llm=False)
+            
+            # Find top matching reference resumes based on JD
+            hits = index.query_similar(jd_text, top_k=5)
+            
+            # Build reference resumes list
+            references = []
+            ids = hits.get("ids", [[]])[0]
+            docs = hits.get("documents", [[]])[0]
+            metas = hits.get("metadatas", [[]])[0]
+            distances = hits.get("distances", [[]])[0]
+            
+            for rid, text, meta, dist in zip(ids, docs, metas, distances):
+                # Parse comma-separated strings back to lists
+                skills_str = meta.get("skills", "")
+                titles_str = meta.get("titles", "")
+                skills = [s.strip() for s in skills_str.split(",") if s.strip()] if skills_str else []
+                titles = [t.strip() for t in titles_str.split(",") if t.strip()] if titles_str else []
+                
+                references.append({
+                    "id": rid,
+                    "text": text,
+                    "metadata": {
+                        "category": meta.get("category", "N/A"),
+                        "skills": skills,
+                        "titles": titles,
+                        "years": meta.get("years", 0),
+                        "filename": meta.get("filename", rid)
+                    },
+                    "similarity_score": round((1 - dist) * 100, 1)
+                })
+            
+            # Get comprehensive analysis with JD and references
+            analysis = analyze_resume_for_job(resume_text, jd_text, references)
+            
+            return jsonify({
+                "success": True,
+                "filename": filename,
+                "filepath": filepath,
+                "resume_text": resume_text[:1000] + "..." if len(resume_text) > 1000 else resume_text,
+                "resume_text_full": resume_text,
+                "jd_text": jd_text,
+                "score": analysis["score"],
+                "analysis": analysis["analysis"],
+                "fields": fields,
+                "reference_resumes": references,
+                "message": "Resume analyzed with job description successfully",
                 "api_usage": analysis.get("api_usage")
             })
         except Exception as e:

@@ -23,6 +23,19 @@ export async function analyzeResume(file) {
   return res.json();
 }
 
+export async function improveResumeWithJD(file, jdText) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('jd_text', jdText);
+
+  const res = await fetch(`${API}/api/improve-with-jd`, {
+    method: "POST",
+    body: formData
+  });
+  if (!res.ok) throw new Error(`Improve with JD failed: ${res.status}`);
+  return res.json();
+}
+
 export async function findReferences({ query, topK = 10, includeComparison = false, userResumeText = "" }) {
   const res = await fetch(`${API}/api/find-references`, {
     method: "POST",
