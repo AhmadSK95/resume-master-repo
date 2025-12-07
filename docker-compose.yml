@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: resume-matcher-backend
+    ports:
+      - "5002:5001"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=False
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - UPLOAD_FOLDER=/app/data/uploads
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./data:/app/data
+      - backend_models:/root/.cache/torch
+    restart: unless-stopped
+    networks:
+      - resume-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:5002
+    container_name: resume-matcher-frontend
+    ports:
+      - "3003:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - resume-network
+
+volumes:
+  backend_models:
+    driver: local
+
+networks:
+  resume-network:
+    driver: bridge

@@ -1,0 +1,17 @@
+FROM mistral:7b
+
+# Set temperature for response creativity (0-2, lower = more deterministic)
+PARAMETER temperature 0.7
+
+# Set top_k for diversity in token selection
+PARAMETER top_k 40
+
+# Set top_p for nucleus sampling
+PARAMETER top_p 0.9
+
+# Set context window size
+PARAMETER num_ctx 4096
+
+# System prompt for the model
+SYSTEM """You are a helpful assistant specializing in resume analysis and job matching. 
+You help users understand how their qualifications align with job descriptions."""

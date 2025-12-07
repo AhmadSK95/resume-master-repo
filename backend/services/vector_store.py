@@ -1,15 +1,22 @@
 import chromadb
-from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 import hashlib
+import os
 
-MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-# MODEL = "sentence-transformers/all-mpnet-base-v2"
-# Model
+MODEL = "all-MiniLM-L6-v2"
+
 class ResumeIndex:
     def __init__(self, persist_dir="../data/chroma"):
-        self.client = chromadb.Client(Settings(persist_directory=persist_dir, anonymized_telemetry=False))
-        self.col = self.client.get_or_create_collection(name="resumes", metadata={"hnsw:space":"cosine"})
+        # Normalize persist_dir to absolute path to avoid cwd issues
+        self.persist_dir = os.path.abspath(persist_dir)
+        os.makedirs(self.persist_dir, exist_ok=True)
+        
+        # Use PersistentClient for automatic persistence
+        self.client = chromadb.PersistentClient(path=self.persist_dir)
+        self.col = self.client.get_or_create_collection(
+            name="resumes",
+            metadata={"hnsw:space": "cosine"}
+        )
         self.model = SentenceTransformer(MODEL)
 
     def _embed(self, texts):
