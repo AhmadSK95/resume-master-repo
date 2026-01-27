@@ -1,5 +1,50 @@
 """Resume analysis and improvement suggestions using Mistral."""
 from services.mistral_service import call_mistral
+import re
+
+def extract_bullet_suggestions(analysis_text: str) -> list:
+    """Extract BEFORE/AFTER/IMPACT bullet suggestions from analysis text."""
+    suggestions = []
+    
+    # Look for BEFORE/AFTER/IMPACT patterns
+    pattern = r'BEFORE:\s*(.+?)\s*AFTER:\s*(.+?)\s*IMPACT:\s*(.+?)(?=\n\nBEFORE:|\n\n\*\*|$)'
+    matches = re.findall(pattern, analysis_text, re.DOTALL | re.IGNORECASE)
+    
+    for before, after, impact in matches:
+        suggestions.append({
+            "type": "bullet",
+            "before": before.strip(),
+            "after": after.strip(),
+            "reason": impact.strip()
+        })
+    
+    return suggestions[:10]  # Limit to 10 suggestions
+
+
+def extract_section(analysis_text: str, section_name: str) -> list:
+    """Extract bullet points or content from a named section."""
+    items = []
+    
+    # Find the section
+    pattern = rf'\*?\*?{section_name}\*?\*?:?\s*(.+?)(?=\n\n\*\*|$)'
+    match = re.search(pattern, analysis_text, re.DOTALL | re.IGNORECASE)
+    
+    if match:
+        content = match.group(1).strip()
+        # Extract bullet points or numbered items
+        lines = content.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line and (line.startswith('-') or line.startswith('•') or re.match(r'^\d+\.', line)):
+                # Clean up bullet/number markers
+                cleaned = re.sub(r'^[-•\d\.\s]+', '', line).strip()
+                if cleaned:
+                    items.append(cleaned)
+            elif line and not line.startswith('**'):  # Not a new section header
+                items.append(line)
+    
+    return items[:15]  # Limit items
+
 
 def analyze_and_suggest_improvements(resume_text: str) -> dict:
     """
@@ -111,6 +156,7 @@ Provide:
 def analyze_resume_for_job(resume_text: str, jd_text: str, reference_resumes: list[dict] = None) -> dict:
     """
     Analyze user's resume against a specific job description with reference resume insights.
+    Returns structured suggestions for bullet point improvements.
     
     Args:
         resume_text: The full text of the user's resume
@@ -118,7 +164,7 @@ def analyze_resume_for_job(resume_text: str, jd_text: str, reference_resumes: li
         reference_resumes: Optional list of top matching reference resumes
     
     Returns:
-        dict with comprehensive analysis, score, and suggestions
+        dict with comprehensive analysis, score, suggestions array, and detailed breakdown
     """
     # Build reference context if provided
     ref_context = ""
@@ -131,7 +177,7 @@ def analyze_resume_for_job(resume_text: str, jd_text: str, reference_resumes: li
             for i, r in enumerate(reference_resumes[:3])
         ])
     
-    prompt = f"""You are an expert resume coach. Analyze this resume against the job description and provide actionable insights.
+    prompt = f"""You are an expert resume coach. Analyze this resume against the job description and provide specific, actionable insights.
 
 JOB DESCRIPTION:
 {jd_text[:2000]}
@@ -139,56 +185,72 @@ JOB DESCRIPTION:
 USER'S RESUME:
 {resume_text[:3000]}{ref_context}
 
-Provide a comprehensive analysis in this format:
+Provide analysis in this EXACT format:
 
-1. OVERALL MATCH SCORE (0-100): Rate how well the resume matches the JD
+**MATCH SCORE**: [0-100 number]
 
-2. JD REQUIREMENTS ANALYSIS:
-   - List key requirements from the JD
-   - Mark which ones are clearly addressed in the resume
-   - Mark which ones are missing or weak
+**KEY REQUIREMENTS FROM JD**:
+- [Requirement 1]: [Present/Missing/Weak] in resume
+- [Requirement 2]: [Present/Missing/Weak] in resume
+- [List 5-7 key requirements]
 
-3. GAP ANALYSIS:
-   - Critical gaps between resume and JD requirements
-   - Missing keywords and skills the JD emphasizes
-   - Experience level alignment issues
+**CRITICAL GAPS**:
+1. [Specific gap with what's missing]
+2. [Another gap]
+3. [List 3-5 gaps]
 
-4. STRENGTHS FOR THIS ROLE:
-   - What in the resume aligns well with this JD
-   - Relevant accomplishments to highlight
+**MISSING KEYWORDS**: [List 10-15 important keywords from JD not in resume]
 
-5. SPECIFIC IMPROVEMENTS:
-   - 5-7 actionable changes to better match this JD
-   - Suggested keywords to add
-   - Content to emphasize or de-emphasize
-   - Formatting suggestions
+**STRENGTHS FOR THIS ROLE**:
+- [Specific strength 1]
+- [Specific strength 2]
+- [List 3-5 strengths]
 
-6. LEARNING FROM REFERENCES:
-   - What successful candidates include (based on reference resumes)
-   - How they structure relevant experience
-   - Keywords and phrases they use effectively
+**RECOMMENDED BULLET IMPROVEMENTS**:
+For each improvement, use this format:
+BEFORE: [Original bullet from resume or generic version]
+AFTER: [Improved bullet with JD keywords and metrics]
+IMPACT: [Why this change matters for this JD]
 
-7. PRIORITY ACTIONS:
-   - Top 3 most important changes ranked by impact
+[Provide 5-7 bullet improvements]
 
-Be specific, constructive, and actionable. Focus on this particular job opportunity."""
+**TOP 3 PRIORITY ACTIONS**:
+1. [Most important change with immediate impact]
+2. [Second priority]
+3. [Third priority]
+
+Be specific to THIS job description. Use actual JD keywords. Make bullets achievement-oriented with metrics."""
 
     system_prompt = "You are an expert resume coach and ATS optimization specialist with deep knowledge of matching resumes to job descriptions."
     
     try:
-        analysis = call_mistral(prompt, system_prompt, temperature=0.7, max_tokens=2000)
+        analysis = call_mistral(prompt, system_prompt, temperature=0.7, max_tokens=2500)
         
         # Extract score
         score = 65  # Default
-        if "MATCH SCORE" in analysis:
+        if "MATCH SCORE" in analysis or "**MATCH SCORE**" in analysis:
             import re
-            score_match = re.search(r'(\d+)', analysis.split("MATCH SCORE")[1].split("\n")[0])
+            score_match = re.search(r'\*?\*?MATCH SCORE\*?\*?:?\s*(\d+)', analysis)
             if score_match:
                 score = int(score_match.group(1))
+        
+        # Extract structured suggestions for bullets
+        suggestions = extract_bullet_suggestions(analysis)
+        
+        # Extract key gaps and keywords
+        gaps = extract_section(analysis, "CRITICAL GAPS")
+        missing_keywords = extract_section(analysis, "MISSING KEYWORDS")
+        strengths = extract_section(analysis, "STRENGTHS")
+        priorities = extract_section(analysis, "TOP 3 PRIORITY")
         
         return {
             "score": score,
             "analysis": analysis,
+            "suggestions": suggestions,
+            "gaps": gaps,
+            "missing_keywords": missing_keywords,
+            "strengths": strengths,
+            "priorities": priorities,
             "model": "mistral",
             "api_usage": None
         }
@@ -196,6 +258,11 @@ Be specific, constructive, and actionable. Focus on this particular job opportun
         return {
             "score": 0,
             "analysis": f"Error analyzing resume for job: {str(e)}",
+            "suggestions": [],
+            "gaps": [],
+            "missing_keywords": "",
+            "strengths": [],
+            "priorities": [],
             "model": "mistral",
             "api_usage": None
         }

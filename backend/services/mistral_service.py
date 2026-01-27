@@ -3,8 +3,9 @@ import requests
 import json
 
 # Ollama API endpoint for local Mistral
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
-MISTRAL_MODEL = "mistral"
+# Use host.docker.internal to access host machine from Docker container
+OLLAMA_API_URL = "http://host.docker.internal:11434/api/generate"
+MISTRAL_MODEL = "mistral:7b"
 
 def call_mistral(prompt: str, system_prompt: str = None, temperature: float = 0.7, max_tokens: int = 500) -> str:
     """

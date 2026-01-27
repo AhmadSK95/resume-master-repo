@@ -65,7 +65,11 @@ export default function InsightsPanel({
 }
 
 function OverviewTab({ analysisData }) {
-  const { score, analysis, fields, jd_text } = analysisData;
+  const { score, analysis, fields, jd_text, intelligent_extraction } = analysisData;
+  
+  // Use intelligent extraction data if available
+  const hasIntelligent = intelligent_extraction && intelligent_extraction.gap_analysis;
+  const gapData = hasIntelligent ? intelligent_extraction.gap_analysis : null;
   
   // Parse analysis for structured content
   const parseAnalysis = (text) => {
@@ -145,8 +149,69 @@ function OverviewTab({ analysisData }) {
         </div>
       )}
       
-      {/* Key Points */}
-      {(strengths.length > 0 || gaps.length > 0) && (
+      {/* Intelligent Gap Analysis */}
+      {gapData && (
+        <div style={styles.intelligentSection}>
+          {/* Strong Matches */}
+          {gapData.strong_matches && gapData.strong_matches.length > 0 && (
+            <div style={styles.gapSection}>
+              <h4 style={{...styles.pointsTitle, color: '#28a745'}}>
+                ✓ Strong Matches ({gapData.strong_matches.length})
+              </h4>
+              <ul style={styles.bulletList}>
+                {gapData.strong_matches.map((item, idx) => (
+                  <li key={idx} style={styles.bulletItem}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Critical Gaps */}
+          {gapData.critical_gaps && gapData.critical_gaps.length > 0 && (
+            <div style={styles.gapSection}>
+              <h4 style={{...styles.pointsTitle, color: '#dc3545'}}>
+                ⚠️ Critical Gaps ({gapData.critical_gaps.length})
+              </h4>
+              <ul style={styles.bulletList}>
+                {gapData.critical_gaps.map((item, idx) => (
+                  <li key={idx} style={styles.bulletItem}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Partial Matches */}
+          {gapData.partial_matches && gapData.partial_matches.length > 0 && (
+            <div style={styles.gapSection}>
+              <h4 style={{...styles.pointsTitle, color: '#ffc107'}}>
+                ◐ Partial Matches ({gapData.partial_matches.length})
+              </h4>
+              <ul style={styles.bulletList}>
+                {gapData.partial_matches.map((item, idx) => (
+                  <li key={idx} style={styles.bulletItem}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Top Actions */}
+          {gapData.top_3_actions && gapData.top_3_actions.length > 0 && (
+            <div style={styles.gapSection}>
+              <h4 style={{...styles.pointsTitle, color: '#007bff'}}>
+                🎯 Top Priority Actions
+              </h4>
+              <ol style={styles.bulletList}>
+                {gapData.top_3_actions.map((item, idx) => (
+                  <li key={idx} style={styles.bulletItem}><strong>{item}</strong></li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Key Points (fallback if no intelligent data) */}
+      {!gapData && (strengths.length > 0 || gaps.length > 0) && (
         <div style={styles.keyPoints}>
           {strengths.length > 0 && (
             <div style={styles.pointsSection}>
@@ -561,5 +626,27 @@ const styles = {
   },
   referencesHeader: {
     marginBottom: 20
+  },
+  intelligentSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 20,
+    marginBottom: 24
+  },
+  gapSection: {
+    padding: 16,
+    background: '#ffffff',
+    border: '1px solid #e9ecef',
+    borderRadius: 8
+  },
+  bulletList: {
+    margin: '8px 0 0 0',
+    paddingLeft: 24,
+    fontSize: 14,
+    lineHeight: 1.6,
+    color: '#444'
+  },
+  bulletItem: {
+    marginBottom: 8
   }
 };

@@ -46,6 +46,7 @@ TITLE_HINTS = [
 ]
 
 YEAR_RE = re.compile(r'(\d+)(?:\+)?\s*(?:years|yrs)')
+YEAR_RANGE_RE = re.compile(r'(\d+)\s*[-–—to]\s*(\d+)\s*(?:years|yrs)')
 
 def simple_skills(text:str):
     low = re.sub(r'[^a-z0-9\n ]+',' ', text.lower())
@@ -76,7 +77,22 @@ def simple_titles(text:str):
     return sorted(list(found)) if found else ["unknown"]
 
 def simple_years(text:str):
-    vals = [int(m.group(1)) for m in YEAR_RE.finditer(text.lower())]
+    text_lower = text.lower()
+    vals = []
+    
+    # First check for ranges like "2-5 years" or "3 to 5 years"
+    range_matches = YEAR_RANGE_RE.finditer(text_lower)
+    for m in range_matches:
+        min_years = int(m.group(1))
+        max_years = int(m.group(2))
+        # Use minimum of range as requirement
+        vals.append(min_years)
+    
+    # Then check for single values like "3+ years" or "5 years"
+    single_matches = YEAR_RE.finditer(text_lower)
+    for m in single_matches:
+        vals.append(int(m.group(1)))
+    
     return max(vals) if vals else 0
 
 def extract_fields(text:str, use_llm:bool=False):

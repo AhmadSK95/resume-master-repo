@@ -41,8 +41,8 @@ export default function PostBox() {
       const parsed = parseResume(data.resume_text_full || '');
       setResumeData(parsed);
       
-      // Generate suggestions from analysis
-      const sug = generateBulletSuggestions(parsed, data.analysis);
+      // Use backend suggestions if available, otherwise try frontend parsing
+      const sug = data.suggestions || generateBulletSuggestions(parsed, data.analysis);
       setSuggestions(sug);
       
       // Show split view if JD was provided

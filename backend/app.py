@@ -12,6 +12,7 @@ from services.vector_store import ResumeIndex
 from services.scorer import score_and_rank
 from services.mistral_service import extract_fields_with_mistral, analyze_with_prompt
 from services.resume_analyzer import analyze_and_suggest_improvements, compare_with_references, analyze_resume_for_job
+from services.intelligent_extractor import extract_jd_requirements, extract_resume_qualifications, intelligent_gap_analysis
 
 load_dotenv()
 
@@ -152,8 +153,33 @@ def improve_resume_with_jd():
             # Extract resume text
             resume_text = load_and_clean(filepath)
             
-            # Extract fields
+            # Check if enhanced intelligent extraction is requested
+            use_intelligent = request.form.get('use_intelligent', 'true').lower() == 'true'
+            
+            # Extract fields (basic fallback)
             fields = extract_fields(resume_text, use_llm=False)
+            
+            # Intelligent extraction if enabled
+            intelligent_data = {}
+            if use_intelligent:
+                try:
+                    # Extract requirements from JD using LLM
+                    jd_requirements = extract_jd_requirements(jd_text)
+                    
+                    # Extract qualifications from resume using LLM
+                    resume_qualifications = extract_resume_qualifications(resume_text, jd_requirements)
+                    
+                    # Perform intelligent gap analysis
+                    gap_analysis = intelligent_gap_analysis(jd_requirements, resume_qualifications)
+                    
+                    intelligent_data = {
+                        'jd_requirements': jd_requirements,
+                        'resume_qualifications': resume_qualifications,
+                        'gap_analysis': gap_analysis
+                    }
+                except Exception as e:
+                    print(f"Intelligent extraction failed: {e}")
+                    # Continue with basic extraction
             
             # Find top matching reference resumes based on JD
             hits = index.query_similar(jd_text, top_k=5)
@@ -188,7 +214,7 @@ def improve_resume_with_jd():
             # Get comprehensive analysis with JD and references
             analysis = analyze_resume_for_job(resume_text, jd_text, references)
             
-            return jsonify({
+            response_data = {
                 "success": True,
                 "filename": filename,
                 "filepath": filepath,
@@ -197,11 +223,22 @@ def improve_resume_with_jd():
                 "jd_text": jd_text,
                 "score": analysis["score"],
                 "analysis": analysis["analysis"],
+                "suggestions": analysis.get("suggestions", []),
+                "gaps": analysis.get("gaps", []),
+                "missing_keywords": analysis.get("missing_keywords", []),
+                "strengths": analysis.get("strengths", []),
+                "priorities": analysis.get("priorities", []),
                 "fields": fields,
                 "reference_resumes": references,
                 "message": "Resume analyzed with job description successfully",
                 "api_usage": analysis.get("api_usage")
-            })
+            }
+            
+            # Add intelligent extraction data if available
+            if intelligent_data:
+                response_data["intelligent_extraction"] = intelligent_data
+            
+            return jsonify(response_data)
         except Exception as e:
             return jsonify({"error": f"Failed to analyze resume: {str(e)}"}), 500
     
