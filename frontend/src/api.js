@@ -72,3 +72,13 @@ export async function checkHealth() {
   if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
   return res.json();
 }
+
+export async function searchResumesForJD(jdText, topK = 10) {
+  const res = await fetch(`${API}/api/search-resumes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jd_text: jdText, top_k: topK })
+  });
+  if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+  return res.json();
+}

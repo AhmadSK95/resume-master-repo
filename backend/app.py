@@ -13,6 +13,7 @@ from services.scorer import score_and_rank
 from services.mistral_service import extract_fields_with_mistral, analyze_with_prompt
 from services.resume_analyzer import analyze_and_suggest_improvements, compare_with_references, analyze_resume_for_job
 from services.intelligent_extractor import extract_jd_requirements, extract_resume_qualifications, intelligent_gap_analysis
+from services.rag_engine import rag_search_resumes, rag_enhance_suggestions
 
 load_dotenv()
 
@@ -352,6 +353,23 @@ def upload_resume():
             return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
     
     return jsonify({"error": "Invalid file type. Allowed: pdf, docx, txt"}), 400
+
+
+@app.post("/api/search-resumes")
+def search_resumes_with_rag():
+    """RAG-powered resume search: Find top resumes for a JD with intelligent insights."""
+    data = request.get_json(force=True)
+    jd_text = (data.get("jd_text") or "").strip()
+    top_k = int(data.get("top_k", 10))
+    
+    if not jd_text:
+        return jsonify({"error": "jd_text is required"}), 400
+    
+    try:
+        result = rag_search_resumes(jd_text, top_k=top_k, index=index)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"RAG search failed: {str(e)}"}), 500
 
 
 @app.post("/api/query")
