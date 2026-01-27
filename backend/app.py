@@ -10,7 +10,7 @@ from services.extract_text import load_and_clean
 from services.extract_fields import extract_fields, infer_jd_skills, infer_jd_title, infer_req_years
 from services.vector_store import ResumeIndex
 from services.scorer import score_and_rank
-from services.openai_service import extract_fields_with_openai, analyze_with_prompt, enhance_candidate_summary
+from services.mistral_service import extract_fields_with_mistral, analyze_with_prompt
 from services.resume_analyzer import analyze_and_suggest_improvements, compare_with_references, analyze_resume_for_job
 
 load_dotenv()
@@ -274,7 +274,6 @@ def upload_resume():
         return jsonify({"error": "No file provided"}), 400
     
     file = request.files['file']
-    use_openai = request.form.get('use_openai', 'false').lower() == 'true'
     
     if file.filename == '':
         return jsonify({"error": "No file selected"}), 400
@@ -288,11 +287,8 @@ def upload_resume():
             # Extract text
             text = load_and_clean(filepath)
             
-            # Extract fields (with optional OpenAI)
-            if use_openai:
-                fields = extract_fields_with_openai(text)
-            else:
-                fields = extract_fields(text, use_llm=False)
+            # Extract fields
+            fields = extract_fields(text, use_llm=False)
             
             # Add to vector store (ChromaDB only accepts str, int, float, bool)
             skills_list = fields.get("skills", [])
@@ -327,7 +323,7 @@ def query_with_prompt():
     data = request.get_json(force=True)
     prompt = (data.get("prompt") or "").strip()
     top_k = int(data.get("top_k", 20))
-    use_openai = bool(data.get("use_openai", True))
+    use_mistral = bool(data.get("use_mistral", True))
     
     if not prompt:
         return jsonify({"error": "prompt is required"}), 400
@@ -357,8 +353,8 @@ def query_with_prompt():
                 "score": 1 - dist  # Convert distance to similarity
             })
         
-        # Use OpenAI to analyze if requested
-        if use_openai and contexts:
+        # Use Mistral to analyze if requested
+        if use_mistral and contexts:
             analysis = analyze_with_prompt(prompt, contexts)
             
             return jsonify({
@@ -379,7 +375,7 @@ def query_with_prompt():
                 ]
             })
         else:
-            # Return raw matches without OpenAI
+            # Return raw matches without AI analysis
             return jsonify({
                 "prompt": prompt,
                 "matches": [

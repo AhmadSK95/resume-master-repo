@@ -20,7 +20,7 @@ echo "🐍 Starting backend on port 5001..."
 ./start_backend.sh > backend.log 2>&1 &
 BACKEND_PID=$!
 echo "   Backend PID: $BACKEND_PID"
-sleep 3
+sleep 6
 
 # Check if backend started
 if ! curl -s http://localhost:5001/api/health > /dev/null; then

@@ -13,7 +13,6 @@ services:
       - FLASK_DEBUG=False
       - CHROMA_PERSIST_DIR=/app/data/chroma
       - UPLOAD_FOLDER=/app/data/uploads
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./data:/app/data
       - backend_models:/root/.cache/torch

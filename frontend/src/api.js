@@ -57,11 +57,11 @@ export async function renderPdf(title, content) {
   return blob;
 }
 
-export async function queryWithPrompt(prompt, topK = 20, useOpenAI = true) {
+export async function queryWithPrompt(prompt, topK = 20, useMistral = true) {
   const res = await fetch(`${API}/api/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, top_k: topK, use_openai: useOpenAI })
+    body: JSON.stringify({ prompt, top_k: topK, use_mistral: useMistral })
   });
   if (!res.ok) throw new Error(`Query failed: ${res.status}`);
   return res.json();

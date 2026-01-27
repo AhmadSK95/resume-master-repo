@@ -1,45 +1,55 @@
 import { useState, useEffect } from 'react';
-import { analyzeResume, improveResumeWithJD, findReferences, renderPdf, checkHealth } from '../api';
-import ReferenceResumeCard from './ReferenceResumeCard';
-import ResumeViewer from './ResumeViewer';
+import { analyzeResume, improveResumeWithJD, renderPdf, checkHealth } from '../api';
+import ResumePreview from './ResumePreview';
+import JDPanel from './JDPanel';
+import InsightsPanel from './InsightsPanel';
+import { parseResume, generateBulletSuggestions } from '../utils/resumeParser';
 
 export default function PostBox() {
-  const [mode, setMode] = useState('improve'); // 'improve' or 'references'
-
-  // Improve mode state
+  // State
   const [file, setFile] = useState(null);
   const [jdText, setJdText] = useState("");
   const [analysisData, setAnalysisData] = useState(null);
-  const [userResumeText, setUserResumeText] = useState("");
-
-  // References mode state
-  const [prompt, setPrompt] = useState("");
-  const [includeComparison, setIncludeComparison] = useState(true);
-  const [referencesData, setReferencesData] = useState(null);
-
-  // Globals
+  const [resumeData, setResumeData] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [dbCount, setDbCount] = useState(0);
+  const [showSplitView, setShowSplitView] = useState(false);
 
   useEffect(() => {
     checkHealth().then(data => setDbCount(data.vector_db_count || 0)).catch(() => {});
-  }, [analysisData]);
+  }, []);
 
   const onAnalyzeResume = async () => {
     if (!file) return;
-    setLoading(true); setError("");
+    setLoading(true); 
+    setError("");
+    setShowSplitView(false);
+    
     try {
       let data;
       if (jdText.trim()) {
-        // Use JD-enhanced analysis
         data = await improveResumeWithJD(file, jdText);
       } else {
-        // Use basic analysis
         data = await analyzeResume(file);
       }
+      
       setAnalysisData(data);
-      setUserResumeText(data.resume_text_full || '');
+      
+      // Parse resume into structured format
+      const parsed = parseResume(data.resume_text_full || '');
+      setResumeData(parsed);
+      
+      // Generate suggestions from analysis
+      const sug = generateBulletSuggestions(parsed, data.analysis);
+      setSuggestions(sug);
+      
+      // Show split view if JD was provided
+      if (jdText.trim()) {
+        setShowSplitView(true);
+      }
+      
       setFile(null);
     } catch (e) {
       setError(String(e.message || e));
@@ -48,22 +58,10 @@ export default function PostBox() {
     }
   };
 
-  const onFindReferences = async () => {
-    if (!prompt.trim()) return;
-    setLoading(true); setError("");
-    try {
-      const data = await findReferences({
-        query: prompt,
-        topK: 10,
-        includeComparison: includeComparison && !!userResumeText,
-        userResumeText
-      });
-      setReferencesData(data);
-    } catch (e) {
-      setError(String(e.message || e));
-    } finally {
-      setLoading(false);
-    }
+  const onApplySuggestion = (suggestion) => {
+    // In a real implementation, this would update the resumeData
+    // For now, just show a notification
+    alert('Suggestion applied! (In production, this would update the resume preview)');
   };
 
   const onDownloadPdf = async (title, content) => {
@@ -82,231 +80,327 @@ export default function PostBox() {
     }
   };
 
+  const handleClear = () => {
+    setAnalysisData(null);
+    setResumeData(null);
+    setSuggestions([]);
+    setJdText('');
+    setError('');
+    setShowSplitView(false);
+  };
+  
+  const handleExport = () => {
+    if (resumeData) {
+      window.print();
+    }
+  };
+
   return (
-    <div style={{maxWidth: 900, margin: '0 auto', padding: 24, fontFamily: 'system-ui'}}>
-      <h1 style={{fontSize: 32, marginBottom: 8}}>🧠 AI Resume Coach</h1>
-      <p style={{color: '#666', marginBottom: 24}}>Reference DB: {dbCount} resumes indexed</p>
+    <div style={styles.app}>
+      {/* Header */}
+      <header style={styles.header}>
+        <div style={styles.headerContent}>
+          <div>
+            <h1 style={styles.appTitle}>🎯 AI Resume Tailoring Assistant</h1>
+            <p style={styles.appSubtitle}>
+              Transform your resume for any job • {dbCount} reference resumes available
+            </p>
+          </div>
+        </div>
+      </header>
 
-      {/* Mode Tabs */}
-      <div style={{marginBottom: 24, borderBottom: '2px solid #eee'}}>
-        <button 
-          onClick={() => setMode('improve')}
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: mode === 'improve' ? '#007bff' : 'transparent',
-            color: mode === 'improve' ? 'white' : '#333',
-            cursor: 'pointer',
-            marginRight: 8
-          }}
-        >
-          ✨ Improve My Resume
-        </button>
-        <button 
-          onClick={() => setMode('references')}
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: mode === 'references' ? '#007bff' : 'transparent',
-            color: mode === 'references' ? 'white' : '#333',
-            cursor: 'pointer'
-          }}
-        >
-          📚 Find Reference Resumes
-        </button>
-      </div>
-
-      {/* Improve Mode */}
-      {mode === 'improve' && (
-        <div>
-          <label style={{display: 'block', marginBottom: 8, fontWeight: 600}}>Upload your resume (PDF, DOCX, TXT):</label>
-          <input 
-            type="file" 
-            accept=".pdf,.docx,.txt"
-            onChange={e => setFile(e.target.files[0])}
-            style={{marginBottom: 12, padding: 8}}
-          />
+      {/* Input Section */}
+      <div style={styles.inputSection}>
+        <div style={styles.inputCard}>
+          <div style={styles.inputRow}>
+            <div style={styles.fileUploadSection}>
+              <label style={styles.label}>
+                📄 Upload Resume
+              </label>
+              <input 
+                type="file" 
+                accept=".pdf,.docx,.txt"
+                onChange={e => setFile(e.target.files[0])}
+                style={styles.fileInput}
+              />
+              {file && (
+                <div style={styles.fileNameDisplay}>
+                  ✓ {file.name}
+                </div>
+              )}
+            </div>
+            
+            <div style={styles.jdInputSection}>
+              <label style={styles.label}>
+                📋 Job Description (Optional)
+              </label>
+              <textarea 
+                value={jdText} 
+                onChange={e => setJdText(e.target.value)}
+                rows={3}
+                placeholder="Paste job description for tailored analysis..."
+                style={styles.jdTextarea}
+              />
+            </div>
+          </div>
           
-          <label style={{display: 'block', marginTop: 16, marginBottom: 8, fontWeight: 600}}>Job Description (Optional - for tailored suggestions):</label>
-          <textarea 
-            value={jdText} 
-            onChange={e => setJdText(e.target.value)}
-            rows={6}
-            placeholder="Paste the job description here to get targeted improvement suggestions and see matching reference resumes..."
-            style={{width: '100%', padding: 12, fontSize: 14, borderRadius: 6, border: '1px solid #ddd', fontFamily: 'system-ui'}}
-          />
-          
-          <div style={{marginTop: 12, display: 'flex', alignItems: 'center', gap: 16}}>
+          <div style={styles.actionRow}>
             <button 
               onClick={onAnalyzeResume}
               disabled={loading || !file}
               style={{
-                padding: '10px 24px',
-                background: '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: loading ? 'wait' : 'pointer',
-                fontSize: 14,
-                fontWeight: 600
+                ...styles.primaryButton,
+                opacity: loading || !file ? 0.5 : 1,
+                cursor: loading || !file ? 'not-allowed' : 'pointer'
               }}
             >
-              {loading ? '⏳ Analyzing...' : (jdText.trim() ? '🎯 Analyze for Job' : '🔍 Analyze Resume')}
+              {loading ? '⏳ Analyzing...' : (jdText.trim() ? '🎯 Analyze Against Job' : '🔍 Analyze Resume')}
             </button>
-
-            <button 
-              onClick={() => { setAnalysisData(null); setUserResumeText(''); setJdText(''); setError(''); }}
-              style={{
-                padding: '10px 24px',
-                background: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontSize: 14
-              }}
-            >
-              Clear
-            </button>
+            
+            {analysisData && (
+              <>
+                <button onClick={handleClear} style={styles.secondaryButton}>
+                  Clear
+                </button>
+                <button onClick={handleExport} style={styles.secondaryButton}>
+                  📥 Export
+                </button>
+              </>
+            )}
           </div>
 
-          {error && <p style={{color: 'red', marginTop: 16, padding: 12, background: '#fee', borderRadius: 6}}>{error}</p>}
-
-          {analysisData && (
-            <div style={{marginTop: 24}}>
-              <div style={{display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12}}>
-                <span style={{background: analysisData.score >= 70 ? '#28a745' : analysisData.score >= 50 ? '#ffc107' : '#dc3545', color: 'white', padding: '8px 16px', borderRadius: 20, fontWeight: 700, fontSize: 16}}>
-                  {analysisData.jd_text ? 'Match Score' : 'Score'}: {analysisData.score}/100
-                </span>
-                <span style={{color: '#666', fontSize: 14}}>File: {analysisData.filename}</span>
-              </div>
-              
-              <div style={{background: '#f0f9ff', padding: 20, borderRadius: 8, marginBottom: 16, border: '2px solid #007bff'}}>
-                <h3 style={{marginTop: 0, color: '#007bff'}}>
-                  {analysisData.jd_text ? '🎯 Job-Specific Insights' : '✨ AI Feedback'}
-                </h3>
-                <div style={{whiteSpace: 'pre-wrap', lineHeight: 1.6}}>{analysisData.analysis}</div>
-              </div>
-
-              {analysisData.fields && (
-                <div style={{border: '1px solid #eee', padding: 12, borderRadius: 8, background: '#fff', marginBottom: 16}}>
-                  <strong>Detected Fields:</strong>
-                  <div style={{fontSize: 14, marginTop: 6}}>
-                    <div><strong>Skills:</strong> {(analysisData.fields.skills || []).join(', ') || 'None detected'}</div>
-                    <div><strong>Titles:</strong> {(analysisData.fields.titles || []).join(', ') || 'None detected'}</div>
-                    <div><strong>Years:</strong> {analysisData.fields.years_exp || 0}</div>
-                  </div>
-                </div>
-              )}
-
-              {analysisData.reference_resumes && analysisData.reference_resumes.length > 0 && (
-                <div style={{marginTop: 24}}>
-                  <h3 style={{color: '#333'}}>📚 Top Reference Resumes for This Job</h3>
-                  <p style={{color: '#666', fontSize: 14, marginBottom: 16}}>These resumes from our database match the job description well. Use them as inspiration for improvements.</p>
-                  {analysisData.reference_resumes.map((ref, idx) => (
-                    <ReferenceResumeCard
-                      key={idx}
-                      reference={ref}
-                      index={idx}
-                      onDownloadPdf={onDownloadPdf}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <ResumeViewer
-                resumeText={analysisData.resume_text_full}
-                filepath={analysisData.filepath}
-              />
+          {error && (
+            <div style={styles.errorAlert}>
+              ⚠️ {error}
             </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* References Mode */}
-      {mode === 'references' && (
-        <div>
-          <label style={{display: 'block', marginBottom: 8, fontWeight: 600}}>Describe the reference resume you want:</label>
-          <textarea 
-            value={prompt} 
-            onChange={e => setPrompt(e.target.value)}
-            rows={4}
-            placeholder="E.g., Senior Python backend engineer with ML and 5+ years"
-            style={{width: '100%', padding: 12, fontSize: 14, borderRadius: 6, border: '1px solid #ddd'}}
-          />
-
-          <div style={{marginTop: 12, display: 'flex', alignItems: 'center', gap: 16}}>
-            <label style={{display: 'flex', alignItems: 'center', gap: 6}}>
-              <input 
-                type="checkbox" 
-                checked={includeComparison && !!userResumeText}
-                onChange={e => setIncludeComparison(e.target.checked)}
-                disabled={!userResumeText}
-              />
-              Compare with my uploaded resume
-            </label>
-
-            <button 
-              onClick={onFindReferences}
-              disabled={loading || !prompt.trim()}
-              style={{
-                padding: '10px 24px',
-                background: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: 6,
-                cursor: loading ? 'wait' : 'pointer',
-                fontSize: 14,
-                fontWeight: 600
-              }}
-            >
-              {loading ? '🔎 Searching...' : '🚀 Find References'}
-            </button>
+      {/* Main Content - Split View or Single View */}
+      {analysisData && showSplitView ? (
+        <div style={styles.splitView}>
+          {/* Left: JD Panel */}
+          <div style={styles.leftPanel}>
+            <JDPanel 
+              jdText={jdText}
+              onChange={setJdText}
+              detectedFields={analysisData.fields}
+            />
           </div>
-
-          {error && <p style={{color: 'red', marginTop: 16, padding: 12, background: '#fee', borderRadius: 6}}>{error}</p>}
-
-          {referencesData?.comparison_analysis?.comparison && (
-            <div style={{background: '#fff7e6', padding: 16, borderRadius: 8, border: '1px solid #ffe8b2', marginTop: 16}}>
-              <h3 style={{marginTop: 0, color: '#b36b00'}}>🔁 Comparison With Your Resume</h3>
-              <div style={{whiteSpace: 'pre-wrap'}}>{referencesData.comparison_analysis.comparison}</div>
+          
+          {/* Right: Resume Preview */}
+          <div style={styles.rightPanel}>
+            <div style={styles.panelHeader}>
+              <h3 style={styles.panelTitle}>Resume Preview</h3>
+              <div style={styles.headerActions}>
+                <button 
+                  onClick={() => navigator.clipboard.writeText(resumeData?.rawText || '')}
+                  style={styles.iconButton}
+                  title="Copy resume text"
+                >
+                  📋
+                </button>
+              </div>
             </div>
-          )}
-
-          {referencesData?.references && (
-            <div style={{marginTop: 24}}>
-              <h3>Top Reference Resumes:</h3>
-              {referencesData.references.map((ref, idx) => (
-                <div key={idx} style={{
-                  border: '1px solid #ddd',
-                  borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 12,
-                  background: 'white'
-                }}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: 8}}>
-                    <strong>Reference {idx + 1} — {ref.metadata.category}</strong>
-                    <span style={{
-                      background: ref.similarity_score >= 70 ? '#28a745' : ref.similarity_score >= 50 ? '#ffc107' : '#6c757d',
-                      color: 'white', padding: '4px 12px', borderRadius: 20, fontWeight: 700
-                    }}>{Math.round(ref.similarity_score)}%</span>
-                  </div>
-                  <div style={{fontSize: 14, color: '#666', marginBottom: 6}}>
-                    <strong>Skills:</strong> {(ref.metadata.skills || []).slice(0, 10).join(', ')}
-                  </div>
-                  <div style={{fontSize: 12, color: '#999', marginBottom: 8}}>
-                    {ref.text.slice(0, 200)}...
-                  </div>
-                  <div style={{display: 'flex', gap: 8}}>
-                    <button onClick={() => onDownloadPdf(`Reference_${idx + 1}_${ref.metadata.category}`, ref.text)} style={{padding: '8px 12px'}}>⬇️ Download PDF</button>
-                    <button onClick={() => navigator.clipboard.writeText(ref.text)} style={{padding: '8px 12px'}}>📋 Copy Text</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            <ResumePreview resumeData={resumeData} />
+          </div>
+        </div>
+      ) : analysisData && !showSplitView ? (
+        <div style={styles.singleView}>
+          <ResumePreview resumeData={resumeData} />
+        </div>
+      ) : null}
+      
+      {/* Bottom: Insights Panel */}
+      {analysisData && (
+        <div style={styles.insightsSection}>
+          <InsightsPanel
+            analysisData={analysisData}
+            suggestions={suggestions}
+            onApplySuggestion={onApplySuggestion}
+            onDownloadPdf={onDownloadPdf}
+          />
         </div>
       )}
     </div>
   );
 }
+
+const styles = {
+  app: {
+    minHeight: '100vh',
+    background: '#f5f7fa',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+  },
+  header: {
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: 'white',
+    padding: '24px 32px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+  },
+  headerContent: {
+    maxWidth: 1400,
+    margin: '0 auto',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  appTitle: {
+    margin: 0,
+    fontSize: 28,
+    fontWeight: 700
+  },
+  appSubtitle: {
+    margin: '4px 0 0 0',
+    fontSize: 14,
+    opacity: 0.9
+  },
+  inputSection: {
+    maxWidth: 1400,
+    margin: '0 auto',
+    padding: '24px 32px'
+  },
+  inputCard: {
+    background: 'white',
+    borderRadius: 12,
+    padding: 24,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+  },
+  inputRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 2fr',
+    gap: 24,
+    marginBottom: 20
+  },
+  fileUploadSection: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  jdInputSection: {
+    display: 'flex',
+    flexDirection: 'column'
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#333',
+    marginBottom: 8,
+    display: 'block'
+  },
+  fileInput: {
+    padding: 10,
+    fontSize: 14,
+    border: '2px dashed #ddd',
+    borderRadius: 8,
+    cursor: 'pointer',
+    background: '#fafafa'
+  },
+  fileNameDisplay: {
+    marginTop: 8,
+    padding: 8,
+    background: '#d4f4dd',
+    color: '#0c6b2f',
+    borderRadius: 6,
+    fontSize: 13,
+    fontWeight: 500
+  },
+  jdTextarea: {
+    padding: 12,
+    fontSize: 14,
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    fontFamily: 'inherit',
+    resize: 'vertical',
+    lineHeight: 1.5
+  },
+  actionRow: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center'
+  },
+  primaryButton: {
+    padding: '12px 24px',
+    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    color: 'white',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 15,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'transform 0.2s',
+    boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+  },
+  secondaryButton: {
+    padding: '12px 24px',
+    background: 'white',
+    color: '#666',
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 500,
+    cursor: 'pointer'
+  },
+  iconButton: {
+    padding: '6px 12px',
+    background: 'transparent',
+    border: '1px solid #ddd',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontSize: 16
+  },
+  errorAlert: {
+    marginTop: 16,
+    padding: 12,
+    background: '#ffebe9',
+    color: '#c41d00',
+    borderRadius: 8,
+    fontSize: 14,
+    border: '1px solid #ffcccb'
+  },
+  splitView: {
+    maxWidth: 1400,
+    margin: '0 auto',
+    padding: '0 32px 24px',
+    display: 'grid',
+    gridTemplateColumns: '1fr 1.5fr',
+    gap: 24,
+    minHeight: 600
+  },
+  singleView: {
+    maxWidth: 1400,
+    margin: '0 auto',
+    padding: '0 32px 24px'
+  },
+  leftPanel: {
+    height: 600,
+    position: 'sticky',
+    top: 24
+  },
+  rightPanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 600
+  },
+  panelHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  panelTitle: {
+    margin: 0,
+    fontSize: 18,
+    fontWeight: 600,
+    color: '#333'
+  },
+  headerActions: {
+    display: 'flex',
+    gap: 8
+  },
+  insightsSection: {
+    maxWidth: 1400,
+    margin: '0 auto',
+    padding: '0 32px 32px'
+  }
+};

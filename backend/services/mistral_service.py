@@ -43,7 +43,7 @@ def call_mistral(prompt: str, system_prompt: str = None, temperature: float = 0.
         return ""
 
 
-def extract_fields_with_openai(resume_text: str) -> dict:
+def extract_fields_with_mistral(resume_text: str) -> dict:
     """Extract structured fields from resume using Mistral."""
     prompt = f"""Extract the following information from this resume and return as JSON:
 - skills: list of technical skills

@@ -1,5 +1,5 @@
 """Resume analysis and improvement suggestions using Mistral."""
-from services.openai_service import call_mistral
+from services.mistral_service import call_mistral
 
 def analyze_and_suggest_improvements(resume_text: str) -> dict:
     """
