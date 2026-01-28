@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import DiffText from './DiffText';
 import ReferenceResumeCard from './ReferenceResumeCard';
+import { renderPdf } from '../api';
 
 /**
  * InsightsPanel - Tabbed interface for analysis results
@@ -11,6 +12,23 @@ export default function InsightsPanel({
   onApplySuggestion
 }) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [error, setError] = useState('');
+  
+  const handleDownloadPdf = async (title, content) => {
+    try {
+      const blob = await renderPdf(title, content);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(`Failed to download: ${e.message}`);
+    }
+  };
   
   if (!analysisData) return null;
   
@@ -55,7 +73,14 @@ export default function InsightsPanel({
         {activeTab === 'references' && (
           <ReferencesTab 
             references={analysisData.reference_resumes}
+            onDownloadPdf={handleDownloadPdf}
           />
+        )}
+        
+        {error && (
+          <div style={styles.errorAlert}>
+            ⚠️ {error}
+          </div>
         )}
       </div>
     </div>
@@ -355,7 +380,7 @@ function SuggestionsTab({ suggestions, onApply }) {
   );
 }
 
-function ReferencesTab({ references }) {
+function ReferencesTab({ references, onDownloadPdf }) {
   if (!references || references.length === 0) {
     return (
       <div style={styles.tabContent}>
@@ -382,6 +407,7 @@ function ReferencesTab({ references }) {
           key={idx}
           reference={ref}
           index={idx}
+          onDownloadPdf={onDownloadPdf}
         />
       ))}
     </div>
@@ -645,5 +671,14 @@ const styles = {
   },
   bulletItem: {
     marginBottom: 8
+  },
+  errorAlert: {
+    padding: 12,
+    background: '#ffebe9',
+    color: '#c41d00',
+    borderRadius: 8,
+    fontSize: 14,
+    border: '1px solid #ffcccb',
+    marginTop: 12
   }
 };
