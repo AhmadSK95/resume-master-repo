@@ -14,6 +14,7 @@ from services.mistral_service import extract_fields_with_mistral, analyze_with_p
 from services.resume_analyzer import analyze_and_suggest_improvements, compare_with_references, analyze_resume_for_job
 from services.intelligent_extractor import extract_jd_requirements, extract_resume_qualifications, intelligent_gap_analysis
 from services.rag_engine import rag_search_resumes, rag_enhance_suggestions
+from services.grounded_rag import grounded_search_insights, grounded_rag_analysis
 
 load_dotenv()
 
@@ -160,28 +161,6 @@ def improve_resume_with_jd():
             # Extract fields (basic fallback)
             fields = extract_fields(resume_text, use_llm=False)
             
-            # Intelligent extraction if enabled
-            intelligent_data = {}
-            if use_intelligent:
-                try:
-                    # Extract requirements from JD using LLM
-                    jd_requirements = extract_jd_requirements(jd_text)
-                    
-                    # Extract qualifications from resume using LLM
-                    resume_qualifications = extract_resume_qualifications(resume_text, jd_requirements)
-                    
-                    # Perform intelligent gap analysis
-                    gap_analysis = intelligent_gap_analysis(jd_requirements, resume_qualifications)
-                    
-                    intelligent_data = {
-                        'jd_requirements': jd_requirements,
-                        'resume_qualifications': resume_qualifications,
-                        'gap_analysis': gap_analysis
-                    }
-                except Exception as e:
-                    print(f"Intelligent extraction failed: {e}")
-                    # Continue with basic extraction
-            
             # Find top matching reference resumes based on JD
             hits = index.query_similar(jd_text, top_k=5)
             
@@ -212,8 +191,17 @@ def improve_resume_with_jd():
                     "similarity_score": round((1 - dist) * 100, 1)
                 })
             
-            # Get comprehensive analysis with JD and references
-            analysis = analyze_resume_for_job(resume_text, jd_text, references)
+            # Use grounded RAG analysis for evidence-based evaluation
+            grounded_analysis = grounded_rag_analysis(jd_text, resume_text, references)
+            
+            # Calculate match score from evaluation
+            match_eval = grounded_analysis.get("match_evaluation", [])
+            met_count = sum(1 for e in match_eval if e["status"] == "met")
+            total_count = len(match_eval) if match_eval else 1
+            score = int((met_count / total_count) * 100)
+            
+            # Also run old analysis for suggestions (backward compat)
+            old_analysis = analyze_resume_for_job(resume_text, jd_text, references)
             
             response_data = {
                 "success": True,
@@ -222,22 +210,15 @@ def improve_resume_with_jd():
                 "resume_text": resume_text[:1000] + "..." if len(resume_text) > 1000 else resume_text,
                 "resume_text_full": resume_text,
                 "jd_text": jd_text,
-                "score": analysis["score"],
-                "analysis": analysis["analysis"],
-                "suggestions": analysis.get("suggestions", []),
-                "gaps": analysis.get("gaps", []),
-                "missing_keywords": analysis.get("missing_keywords", []),
-                "strengths": analysis.get("strengths", []),
-                "priorities": analysis.get("priorities", []),
+                "score": score,
+                "analysis": old_analysis["analysis"],
+                "suggestions": old_analysis.get("suggestions", []),
                 "fields": fields,
                 "reference_resumes": references,
-                "message": "Resume analyzed with job description successfully",
-                "api_usage": analysis.get("api_usage")
+                "grounded_analysis": grounded_analysis,
+                "message": "Resume analyzed with evidence-grounded RAG",
+                "api_usage": None
             }
-            
-            # Add intelligent extraction data if available
-            if intelligent_data:
-                response_data["intelligent_extraction"] = intelligent_data
             
             return jsonify(response_data)
         except Exception as e:
@@ -357,7 +338,7 @@ def upload_resume():
 
 @app.post("/api/search-resumes")
 def search_resumes_with_rag():
-    """RAG-powered resume search: Find top resumes for a JD with intelligent insights."""
+    """Evidence-grounded resume search: Find top resumes with strict citation."""
     data = request.get_json(force=True)
     jd_text = (data.get("jd_text") or "").strip()
     top_k = int(data.get("top_k", 10))
@@ -366,10 +347,45 @@ def search_resumes_with_rag():
         return jsonify({"error": "jd_text is required"}), 400
     
     try:
-        result = rag_search_resumes(jd_text, top_k=top_k, index=index)
-        return jsonify(result)
+        # Step 1: Retrieve top resumes from vector DB
+        hits = index.query_similar(jd_text, top_k=top_k)
+        
+        # Build resumes list
+        resumes = []
+        ids = hits.get("ids", [[]])[0]
+        docs = hits.get("documents", [[]])[0]
+        metas = hits.get("metadatas", [[]])[0]
+        distances = hits.get("distances", [[]])[0]
+        
+        for rid, text, meta, dist in zip(ids, docs, metas, distances):
+            skills_str = meta.get("skills", "")
+            titles_str = meta.get("titles", "")
+            skills = [s.strip() for s in skills_str.split(",") if s.strip()] if skills_str else []
+            titles = [t.strip() for t in titles_str.split(",") if t.strip()] if titles_str else []
+            
+            resumes.append({
+                "id": rid,
+                "text": text,
+                "metadata": {
+                    "category": meta.get("category", "N/A"),
+                    "skills": skills,
+                    "titles": titles,
+                    "years": meta.get("years", 0),
+                    "filename": meta.get("filename", rid)
+                },
+                "similarity_score": round((1 - dist) * 100, 1)
+            })
+        
+        # Step 2: Generate grounded insights (no hallucination)
+        insights = grounded_search_insights(jd_text, resumes)
+        
+        return jsonify({
+            "resumes": resumes,
+            "grounded_insights": insights,
+            "query_jd": jd_text[:200] + "..." if len(jd_text) > 200 else jd_text
+        })
     except Exception as e:
-        return jsonify({"error": f"RAG search failed: {str(e)}"}), 500
+        return jsonify({"error": f"Search failed: {str(e)}"}), 500
 
 
 @app.post("/api/query")
