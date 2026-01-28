@@ -82,3 +82,14 @@ export async function searchResumesForJD(jdText, topK = 10) {
   if (!res.ok) throw new Error(`Search failed: ${res.status}`);
   return res.json();
 }
+
+export async function generateResumePdf(resumeData, filename = "resume") {
+  const res = await fetch(`${API}/api/generate-resume-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resume_data: resumeData, filename })
+  });
+  if (!res.ok) throw new Error(`PDF generation failed: ${res.status}`);
+  const blob = await res.blob();
+  return blob;
+}

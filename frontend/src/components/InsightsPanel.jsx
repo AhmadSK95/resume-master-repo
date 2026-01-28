@@ -8,8 +8,7 @@ import ReferenceResumeCard from './ReferenceResumeCard';
 export default function InsightsPanel({ 
   analysisData, 
   suggestions,
-  onApplySuggestion,
-  onDownloadPdf 
+  onApplySuggestion
 }) {
   const [activeTab, setActiveTab] = useState('overview');
   
@@ -56,7 +55,6 @@ export default function InsightsPanel({
         {activeTab === 'references' && (
           <ReferencesTab 
             references={analysisData.reference_resumes}
-            onDownloadPdf={onDownloadPdf}
           />
         )}
       </div>
@@ -357,7 +355,7 @@ function SuggestionsTab({ suggestions, onApply }) {
   );
 }
 
-function ReferencesTab({ references, onDownloadPdf }) {
+function ReferencesTab({ references }) {
   if (!references || references.length === 0) {
     return (
       <div style={styles.tabContent}>
@@ -376,7 +374,7 @@ function ReferencesTab({ references, onDownloadPdf }) {
         <h4 style={styles.sectionTitle}>📚 Top Reference Resumes</h4>
         <p style={{ color: '#666', fontSize: 14, margin: 0 }}>
           These resumes from our database match the job description well. Use them as inspiration.
-        </p>
+          </p>
       </div>
       
       {references.map((ref, idx) => (
@@ -384,7 +382,6 @@ function ReferencesTab({ references, onDownloadPdf }) {
           key={idx}
           reference={ref}
           index={idx}
-          onDownloadPdf={onDownloadPdf}
         />
       ))}
     </div>

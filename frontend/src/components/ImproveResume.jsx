@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { analyzeResume, improveResumeWithJD, renderPdf, checkHealth } from '../api';
+import { analyzeResume, improveResumeWithJD, generateResumePdf, checkHealth } from '../api';
 import ResumePreview from './ResumePreview';
 import JDPanel from './JDPanel';
 import InsightsPanel from './InsightsPanel';
@@ -59,26 +59,47 @@ export default function ImproveResume() {
   };
 
   const onApplySuggestion = (suggestion) => {
-    // In a real implementation, this would update the resumeData
-    // For now, just show a notification
-    alert('Suggestion applied! (In production, this would update the resume preview)');
-  };
-
-  const onDownloadPdf = async (title, content) => {
-    try {
-      const blob = await renderPdf(title, content);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${title.replace(/\s+/g, '_')}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setError(String(e.message || e));
+    if (!resumeData || !suggestion) return;
+    
+    // Apply suggestion based on type
+    const updatedData = { ...resumeData };
+    
+    if (suggestion.section && suggestion.action) {
+      // Find the section
+      const sectionIndex = updatedData.sections.findIndex(s => s.type === suggestion.section);
+      
+      if (sectionIndex >= 0) {
+        const section = { ...updatedData.sections[sectionIndex] };
+        
+        if (suggestion.action === 'add_bullet' && suggestion.itemIndex !== undefined) {
+          // Add bullet to specific item
+          if (section.items && section.items[suggestion.itemIndex]) {
+            const item = { ...section.items[suggestion.itemIndex] };
+            item.bullets = [...(item.bullets || []), suggestion.newBullet];
+            section.items = [...section.items];
+            section.items[suggestion.itemIndex] = item;
+          }
+        } else if (suggestion.action === 'replace_bullet' && suggestion.itemIndex !== undefined && suggestion.bulletIndex !== undefined) {
+          // Replace existing bullet
+          if (section.items && section.items[suggestion.itemIndex]) {
+            const item = { ...section.items[suggestion.itemIndex] };
+            item.bullets = [...(item.bullets || [])];
+            item.bullets[suggestion.bulletIndex] = suggestion.newBullet;
+            section.items = [...section.items];
+            section.items[suggestion.itemIndex] = item;
+          }
+        } else if (suggestion.action === 'update_summary') {
+          // Update summary content
+          section.content = suggestion.newContent;
+        }
+        
+        updatedData.sections = [...updatedData.sections];
+        updatedData.sections[sectionIndex] = section;
+        setResumeData(updatedData);
+      }
     }
   };
+
 
   const handleClear = () => {
     setAnalysisData(null);
@@ -89,9 +110,25 @@ export default function ImproveResume() {
     setShowSplitView(false);
   };
   
-  const handleExport = () => {
-    if (resumeData) {
-      window.print();
+  const handleExport = async () => {
+    if (!resumeData) return;
+    
+    try {
+      // Use professional PDF generator
+      const filename = resumeData.header?.name?.replace(/\s+/g, '_') || 'resume';
+      const blob = await generateResumePdf(resumeData, filename);
+      
+      // Download the PDF
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}_improved.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(`Failed to generate PDF: ${e.message}`);
     }
   };
 
@@ -208,7 +245,6 @@ export default function ImproveResume() {
             analysisData={analysisData}
             suggestions={suggestions}
             onApplySuggestion={onApplySuggestion}
-            onDownloadPdf={onDownloadPdf}
           />
         </div>
       )}

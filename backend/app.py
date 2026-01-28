@@ -15,6 +15,7 @@ from services.resume_analyzer import analyze_and_suggest_improvements, compare_w
 from services.intelligent_extractor import extract_jd_requirements, extract_resume_qualifications, intelligent_gap_analysis
 from services.rag_engine import rag_search_resumes, rag_enhance_suggestions
 from services.grounded_rag import grounded_search_insights, grounded_rag_analysis
+from services.resume_pdf_generator import generate_professional_resume_pdf, generate_simple_pdf_from_text
 
 load_dotenv()
 
@@ -463,59 +464,52 @@ def query_with_prompt():
         return jsonify({"error": f"Query failed: {str(e)}"}), 500
 
 
+@app.post("/api/generate-resume-pdf")
+def generate_resume_pdf():
+    """Generate a professionally formatted resume PDF from structured data."""
+    data = request.get_json(force=True)
+    resume_data = data.get("resume_data")
+    filename = data.get("filename", "resume").strip()
+    
+    if not resume_data:
+        return jsonify({"error": "resume_data is required"}), 400
+    
+    try:
+        # Generate professional PDF
+        buffer = generate_professional_resume_pdf(resume_data)
+        
+        # Return PDF as download
+        return app.response_class(
+            buffer.getvalue(),
+            mimetype='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}.pdf"'
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500
+
+
 @app.post("/api/render-pdf")
 def render_pdf():
-    """Render plain text to a simple PDF and return it as a download."""
+    """Render plain text to a simple PDF and return it as a download (legacy)."""
     data = request.get_json(force=True)
     title = (data.get("title") or "Reference Resume").strip()
     content = (data.get("content") or "").replace("\r\n", "\n")
-
-    # Create PDF in memory
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    # Title
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(72, height - 72, title[:90])
-
-    # Body text with simple wrapping
-    c.setFont("Helvetica", 10)
-    x = 72
-    y = height - 100
-    max_width = width - 2*72
-
-    for paragraph in content.split("\n\n"):
-        for line in paragraph.split("\n"):
-            words = line.split(" ")
-            current = ""
-            for w in words:
-                test = (current + " " + w).strip()
-                if c.stringWidth(test, "Helvetica", 10) > max_width:
-                    c.drawString(x, y, current)
-                    y -= 14
-                    current = w
-                    if y < 72:
-                        c.showPage()
-                        c.setFont("Helvetica", 10)
-                        y = height - 72
-                else:
-                    current = test
-            if current:
-                c.drawString(x, y, current)
-                y -= 14
-                if y < 72:
-                    c.showPage()
-                    c.setFont("Helvetica", 10)
-                    y = height - 72
-        y -= 10
-    c.showPage()
-    c.save()
-    buffer.seek(0)
-
-    return app.response_class(buffer.getvalue(), mimetype='application/pdf', headers={
-        'Content-Disposition': f'attachment; filename="{title.replace(" ", "_")}.pdf"'
-    })
+    
+    try:
+        # Use new generator for better formatting
+        buffer = generate_simple_pdf_from_text(title, content)
+        
+        return app.response_class(
+            buffer.getvalue(),
+            mimetype='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename="{title.replace(" ", "_")}.pdf"'
+            }
+        )
+    except Exception as e:
+        return jsonify({"error": f"PDF generation failed: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
