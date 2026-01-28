@@ -242,23 +242,57 @@ function parseProjectItems(lines) {
  */
 function parseSkillsGroups(lines) {
   const groups = [];
+  let ungroupedSkills = [];
   
+  // Check if most lines are very short (1-2 words) - likely fragmented text
+  const shortLines = lines.filter(l => l.trim().split(/\s+/).length <= 2).length;
+  const isMostlyFragmented = lines.length > 0 && (shortLines / lines.length) > 0.7;
+  
+  if (isMostlyFragmented) {
+    // Treat each short line as a separate skill, filter out single characters and bullets
+    ungroupedSkills = lines
+      .map(l => l.trim())
+      .filter(l => l.length > 1 && !/^[•\-\*]$/.test(l));
+    
+    if (ungroupedSkills.length > 0) {
+      return [{ name: 'Skills', skills: ungroupedSkills }];
+    }
+  }
+  
+  // Normal parsing for well-formatted text
   for (const line of lines) {
+    // Skip empty or very short lines (likely fragments)
+    if (line.length < 2) continue;
+    
     // Check if line has a category (e.g., "Languages: Python, Java")
     if (line.includes(':')) {
       const [name, skillsStr] = line.split(':').map(s => s.trim());
-      const skills = skillsStr.split(/[,;|]/).map(s => s.trim()).filter(s => s);
-      groups.push({ name, skills });
-    } else {
-      // Treat as a single group
-      const skills = line.split(/[,;|]/).map(s => s.trim()).filter(s => s);
+      const skills = skillsStr.split(/[,;|]/).map(s => s.trim()).filter(s => s && s.length > 1);
       if (skills.length > 0) {
-        groups.push({ name: 'Skills', skills });
+        groups.push({ name, skills });
+      }
+    } else {
+      // Check if line has delimiters
+      if (/[,;|]/.test(line)) {
+        const skills = line.split(/[,;|]/).map(s => s.trim()).filter(s => s && s.length > 1);
+        ungroupedSkills.push(...skills);
+      } else if (line.includes(' ') && line.split(' ').length > 3) {
+        // Multiple space-separated skills in one line
+        const skills = line.split(/\s+/).map(s => s.trim()).filter(s => s && s.length > 1);
+        ungroupedSkills.push(...skills);
+      } else {
+        // Single skill per line (accumulate)
+        ungroupedSkills.push(line.trim());
       }
     }
   }
   
-  return groups.length > 0 ? groups : [{ name: 'Skills', skills: [lines.join(', ')] }];
+  // Add ungrouped skills as one group
+  if (ungroupedSkills.length > 0) {
+    groups.push({ name: 'Skills', skills: ungroupedSkills });
+  }
+  
+  return groups.length > 0 ? groups : [{ name: 'Skills', skills: lines.filter(l => l.length > 1) }];
 }
 
 /**
