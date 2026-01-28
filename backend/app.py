@@ -16,6 +16,7 @@ from services.intelligent_extractor import extract_jd_requirements, extract_resu
 from services.rag_engine import rag_search_resumes, rag_enhance_suggestions
 from services.grounded_rag import grounded_search_insights, grounded_rag_analysis
 from services.resume_pdf_generator import generate_professional_resume_pdf, generate_simple_pdf_from_text
+from services.smart_resume_parser import parse_resume_text
 
 load_dotenv()
 
@@ -492,13 +493,32 @@ def generate_resume_pdf():
 
 @app.post("/api/render-pdf")
 def render_pdf():
-    """Render plain text to a simple PDF and return it as a download (legacy)."""
+    """Render plain text to a PDF with intelligent parsing and formatting."""
     data = request.get_json(force=True)
     title = (data.get("title") or "Reference Resume").strip()
     content = (data.get("content") or "").replace("\r\n", "\n")
+    use_smart_parser = bool(data.get("use_smart_parser", True))
     
     try:
-        # Use new generator for better formatting
+        # Try smart parsing first for better formatting
+        if use_smart_parser and len(content) > 100:
+            try:
+                parsed_data = parse_resume_text(content)
+                # If we got reasonable structure, use professional generator
+                if parsed_data.get("sections"):
+                    buffer = generate_professional_resume_pdf(parsed_data)
+                    return app.response_class(
+                        buffer.getvalue(),
+                        mimetype='application/pdf',
+                        headers={
+                            'Content-Disposition': f'attachment; filename="{title.replace(" ", "_")}.pdf"'
+                        }
+                    )
+            except Exception as parse_err:
+                # Fall back to simple text if parsing fails
+                print(f"Smart parsing failed, falling back to simple: {parse_err}")
+        
+        # Fallback: Use simple text formatting
         buffer = generate_simple_pdf_from_text(title, content)
         
         return app.response_class(
