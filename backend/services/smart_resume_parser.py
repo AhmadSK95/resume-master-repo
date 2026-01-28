@@ -16,6 +16,10 @@ def parse_resume_text(text):
     Returns:
         dict with header and sections
     """
+    # Check if this is bracket-format data (from database extraction)
+    if '[' in text and ']' in text and '\n' not in text[:200]:
+        return parse_bracket_format(text)
+    
     lines = text.split('\n')
     
     # Extract header information (usually first few lines)
@@ -23,6 +27,161 @@ def parse_resume_text(text):
     
     # Parse into sections
     sections = extract_sections(lines)
+    
+    return {
+        "header": header,
+        "sections": sections
+    }
+
+
+def parse_bracket_format(text):
+    """
+    Parse bracket-format resume text (common in database extractions).
+    Format: Summary text ['skill1', 'skill2'] [Institution] [Degree] etc.
+    """
+    header = {"name": "", "email": "", "phone": "", "location": "", "links": []}
+    sections = []
+    
+    # Extract bracketed content
+    bracket_pattern = r'\[([^\]]+)\]'
+    bracketed_items = re.findall(bracket_pattern, text)
+    
+    # Remove bracketed content to get main text
+    main_text = re.sub(bracket_pattern, '', text).strip()
+    
+    # Extract email from main text
+    email_match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text)
+    if email_match:
+        header["email"] = email_match.group(0)
+    
+    # Categorize bracketed items
+    skills = []
+    education_items = []
+    experience_items = []
+    
+    # Common skill indicators
+    skill_keywords = ['python', 'java', 'sql', 'aws', 'react', 'node', 'docker', 'kubernetes',
+                      'tableau', 'excel', 'pandas', 'numpy', 'tensorflow', 'pytorch', 'git']
+    
+    # Education indicators
+    edu_keywords = ['university', 'college', 'institute', 'school', 'b.tech', 'b.s.', 'm.s.',
+                    'bachelor', 'master', 'phd', 'mba', 'degree', 'b.a.', 'm.a.']
+    
+    # Experience indicators  
+    exp_keywords = ['intern', 'engineer', 'developer', 'analyst', 'manager', 'consultant',
+                    'specialist', 'lead', 'senior', 'junior', 'associate']
+    
+    for item in bracketed_items:
+        item_lower = item.lower()
+        
+        # Check if it's a skill (contains common tech terms)
+        if any(skill in item_lower for skill in skill_keywords) or ',' in item:
+            # Split comma-separated skills
+            if ',' in item:
+                skills.extend([s.strip().strip("'\"") for s in item.split(',')])
+            else:
+                skills.append(item.strip("'\""))
+        
+        # Check if it's education
+        elif any(edu in item_lower for edu in edu_keywords):
+            education_items.append(item)
+        
+        # Check if it's experience
+        elif any(exp in item_lower for exp in exp_keywords):
+            experience_items.append(item)
+        
+        # Otherwise, might be skills if short
+        elif len(item) < 30 and not any(c.isdigit() for c in item):
+            skills.append(item.strip("'\""))
+    
+    # Add summary section (first sentence or two)
+    if main_text:
+        sentences = main_text.split('. ')
+        summary = '. '.join(sentences[:2]) + '.' if len(sentences) >= 2 else main_text
+        sections.append({
+            "type": "summary",
+            "content": summary
+        })
+    
+    # Add skills section
+    if skills:
+        # Clean up skills
+        cleaned_skills = []
+        for skill in skills:
+            # Remove quotes and clean
+            skill = skill.strip("'\"").strip()
+            # Skip duplicates and empty
+            if skill and skill not in cleaned_skills and len(skill) > 1:
+                cleaned_skills.append(skill)
+        
+        if cleaned_skills:
+            sections.append({
+                "type": "skills",
+                "groups": [{
+                    "name": "Technical Skills",
+                    "skills": cleaned_skills
+                }]
+            })
+    
+    # Add education section
+    if education_items:
+        edu_list = []
+        i = 0
+        while i < len(education_items):
+            item = education_items[i]
+            # Try to group: [School] [Degree] [Field]
+            school = item
+            degree = education_items[i+1] if i+1 < len(education_items) else ""
+            field = education_items[i+2] if i+2 < len(education_items) else ""
+            
+            edu_list.append({
+                "school": school,
+                "degree": f"{degree} {field}".strip() if degree else "",
+                "dates": ""
+            })
+            i += 3 if i+2 < len(education_items) else len(education_items)
+        
+        if edu_list:
+            sections.append({
+                "type": "education",
+                "items": edu_list
+            })
+    
+    # Add experience section if we have experience items
+    if experience_items:
+        exp_list = []
+        for i in range(0, len(experience_items), 2):
+            company = experience_items[i] if i < len(experience_items) else ""
+            title = experience_items[i+1] if i+1 < len(experience_items) else ""
+            
+            if company or title:
+                exp_list.append({
+                    "title": title,
+                    "company": company,
+                    "dates": "",
+                    "location": "",
+                    "bullets": []
+                })
+        
+        if exp_list:
+            sections.append({
+                "type": "experience",
+                "items": exp_list
+            })
+    
+    # Extract remaining keywords as additional content
+    remaining_text = main_text
+    if len(remaining_text) > len(summary) if 'summary' in [s['type'] for s in sections] else 0:
+        # Look for keywords that might be projects or responsibilities
+        keyword_phrases = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}\b', remaining_text)
+        if keyword_phrases and len(keyword_phrases) > 3:
+            sections.append({
+                "type": "projects",
+                "items": [{
+                    "name": "Key Responsibilities & Projects",
+                    "bullets": keyword_phrases[:10]
+                }]
+            })
     
     return {
         "header": header,
